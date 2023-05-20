@@ -1,0 +1,389 @@
+WITH CTE1 AS (WITH init_aggs AS (
+  SELECT
+    customer_id,
+    customer_name,
+    State,
+    City,
+    Country,
+    Region,
+    ship_mode,
+    COUNT(DISTINCT order_id) n_orders,
+    SUM(quantity) quantity
+  FROM
+    `training.eustore`
+  GROUP BY
+    1, 2, 3, 4, 5, 6, 7
+  ORDER BY
+    customer_name
+),
+ranked AS (
+  SELECT
+    *,
+    ROW_NUMBER() OVER (PARTITION BY customer_id, customer_name ORDER BY n_orders, quantity DESC) rank
+  FROM
+    init_aggs
+),
+shipping_hours AS (
+  SELECT
+    Customer_Name,
+    ROUND(AVG(TIMESTAMP_DIFF(Ship_Date, Order_Date, SECOND))/3600, 2) AS avg_shipping_hours
+  FROM
+    `training.eustore`
+  GROUP BY
+    Customer_Name
+),
+multiple_products AS (
+  SELECT
+    Customer_ID,
+    Customer_Name,
+    Order_ID,
+    CASE WHEN COUNT(DISTINCT Product_ID) > 1 THEN 'Multiple' ELSE 'Single' END AS num_products
+  FROM
+    `training.eustore`
+  GROUP BY
+    Customer_ID,
+    Customer_Name,
+    Order_ID
+),
+multiple_products_percentage AS (
+  SELECT
+    Customer_Name,
+    (SUM(CASE WHEN num_products = 'Multiple' THEN 1 ELSE 0 END) / COUNT(DISTINCT Order_ID)) * 100 AS multiple_products_per_order_percentage
+  FROM
+    multiple_products
+  GROUP BY
+    Customer_Name
+)
+SELECT
+  ranked.customer_id,
+  ranked.customer_name,
+  ranked.State,
+  ranked.City,
+  ranked.Country,
+  ranked.Region,
+  ranked.ship_mode,
+  shipping_hours.avg_shipping_hours,
+  multiple_products_percentage.multiple_products_per_order_percentage
+FROM
+  ranked
+JOIN
+  shipping_hours ON ranked.customer_name = shipping_hours.Customer_Name
+JOIN
+  multiple_products_percentage ON ranked.customer_name = multiple_products_percentage.Customer_Name
+WHERE
+  ranked.rank = 1
+ORDER BY
+  ranked.customer_name
+),
+CTE2 AS (WITH category_stats_1 AS (
+    SELECT 
+        c.Customer_Name, 
+        c.Category, 
+        c.Sub_Category, 
+        SUM(c.Sales) AS max_sales
+    FROM 
+        training.eustore c
+    GROUP BY 
+        c.Customer_Name, c.Category, c.Sub_Category
+    HAVING 
+        SUM(c.Sales) = (
+            SELECT 
+                MAX(total_sales) 
+            FROM (
+                SELECT 
+                    Customer_Name, 
+                    Category, 
+                    Sub_Category, 
+                    SUM(Sales) AS total_sales
+                FROM 
+                    training.eustore
+                GROUP BY 
+                    Customer_Name, Category, Sub_Category
+            ) AS subquery 
+            WHERE 
+                subquery.Customer_Name = c.Customer_Name
+        )
+), 
+percent AS (
+    SELECT 
+        p.Customer_Name,
+        p.Category AS sales_category,
+        CONCAT(
+            p.percent_spending_on_sales_category,
+            '%'
+        ) AS percent_spending_on_sales_category
+    FROM (
+        SELECT 
+            Customer_Name,
+            Category, 
+            SUM(Sales) AS Customer_sale,
+            MAX(Sales) AS category_sales,
+            ROUND(MAX(Sales) / SUM(Sales) * 100) AS percent_spending_on_sales_category
+        FROM 
+            training.eustore
+        GROUP BY 
+            Customer_Name, Category
+    ) AS p
+)
+
+SELECT 
+    cs.Customer_Name, 
+    cs.Category,
+    cs.Sub_Category, 
+    p.percent_spending_on_sales_category
+FROM 
+    category_stats_1 cs
+LEFT JOIN 
+    percent p 
+ON 
+    cs.Customer_Name = p.Customer_Name AND cs.Category = p.sales_category
+ORDER BY 
+    cs.Customer_Name
+),CTE3 AS(
+SELECT
+Customer_Name,
+CASE
+WHEN SUM(IF(Discount = 0, Quantity, 0)) < SUM(IF(Discount > 0, Quantity, 0)) AND
+SUM(IF(Discount > 0, Sales, 0)) > SUM(IF(Discount = 0, Sales, 0)) THEN 'promotional_shopper'
+WHEN SUM(IF(Discount > 0, Sales, 0)) >= 2 * SUM(IF(Discount = 0, Sales, 0)) THEN 'promotional_shopper'
+ELSE 'Regular_shopper'
+END AS shopper_type
+FROM
+training.eustore
+GROUP BY
+Customer_Name)
+,order_summaries AS (
+  SELECT
+    customer_id,
+    customer_name,
+    order_id,
+    MAX(order_date) AS order_date
+  FROM 
+    `training.eustore`
+  GROUP BY
+    customer_id, customer_name, order_id
+),
+date_lapses AS (
+  SELECT
+    *,
+    DATE_DIFF(order_date, LAG(order_date) OVER (PARTITION BY customer_id ORDER BY order_date), DAY) AS days_since_previous_order
+  FROM order_summaries
+),
+median AS (
+  SELECT
+    customer_id,
+    customer_name,
+    PERCENTILE_CONT(days_since_previous_order, 0.5) OVER (PARTITION BY customer_id) AS median_days_bw_orders
+  FROM date_lapses
+),
+average AS (
+  SELECT
+    AVG(median_days_bw_orders) AS median_days_between_orders,
+    customer_name
+  FROM median
+  GROUP BY customer_name
+)
+,cte4 AS (
+  SELECT 
+    *,
+    CONCAT(Order_ID, '_', Customer_ID) AS Order_ID_1
+  FROM training.eustore
+),
+cte5 AS (
+  SELECT
+   Customer_name,
+   SUM(Profit) AS Total_Profit,
+   SUM(Sales) / COUNT(DISTINCT Order_ID_1) AS Average_Order_Value,
+   SUM(Profit) / COUNT(DISTINCT Order_ID_1) AS Average_Order_Profit,
+   COUNT(DISTINCT Product_Name) * 1.0 / COUNT(DISTINCT Order_ID) AS Average_Products_Purchased_Per_Order,
+   SUM(Sales) * 1.0 / SUM(Quantity) AS Average_Revenue_Per_Product_For_The_Customer,
+   SUM(Profit) * 1.0 / SUM(Quantity) AS Average_Profit_Per_Product_For_The_Customer,
+   SUM(Sales) AS Total_Revenue,
+   COUNT(DISTINCT Order_ID_1) AS Total_Transactions,
+   MAX(Order_Date) AS Date_Last_Transaction,
+   DATE_DIFF(DATE("2019-01-31"), MAX(Order_Date), DAY) AS Days_Last_Transaction,
+   MIN(Order_Date) AS Date_First_Transaction
+  FROM cte4
+  GROUP BY customer_name
+)
+,CTE6 AS (
+SELECT s.customer_id, s.last_year, (s.sales - s.prev_sales) / s.prev_sales * 100 AS growth_rate
+FROM (
+    SELECT a.customer_id, a.last_year, a.sales, LAG(a.sales) OVER (PARTITION BY a.customer_id ORDER BY a.last_year) AS prev_sales
+    FROM (
+        SELECT customer_id, EXTRACT(YEAR FROM order_date) AS last_year, SUM(sales) AS sales
+        FROM `training.eustore`
+        GROUP BY customer_id, EXTRACT(YEAR FROM order_date)
+    ) AS a
+) AS s
+JOIN (
+    SELECT customer_id, MAX(last_year) AS max_year
+    FROM (
+        SELECT customer_id, EXTRACT(YEAR FROM order_date) AS last_year
+        FROM `training.eustore`
+        GROUP BY customer_id, EXTRACT(YEAR FROM order_date)
+    ) AS b
+    GROUP BY customer_id
+) AS m ON s.customer_id = m.customer_id AND s.last_year = m.max_year
+)
+,stat AS (
+  SELECT
+    customer_name,
+    customer_id,
+    DATE_DIFF(MAX(Order_Date), "2019-01-31", DAY) AS days_last_transaction,
+    SUM(Sales) AS total_revenue,
+    COUNT(DISTINCT Order_ID) AS total_transactions
+  FROM
+    `training.eustore`
+  GROUP BY
+    customer_id, customer_name
+),
+score AS (
+  SELECT
+    customer_id,
+    days_last_transaction,
+    total_revenue,
+    total_transactions,
+    NTILE(5) OVER (ORDER BY days_last_transaction) AS Recency_segment,
+    NTILE(5) OVER (ORDER BY total_transactions) AS Frequency_segment,
+    NTILE(5) OVER (ORDER BY total_revenue) AS Revenue_segment
+  FROM
+    stat
+),
+RFM_segment AS (
+  SELECT
+    customer_id,
+    Recency_segment,
+    Revenue_segment,
+    Frequency_segment,
+    CASE
+      WHEN Recency_segment = 5 THEN 'Champions'
+      WHEN Recency_segment = 4 THEN 'Loyal Customers'
+      WHEN Recency_segment = 3 THEN 'Potential Loyalists'
+      WHEN Recency_segment = 2 THEN 'Recent Customers'
+      WHEN Recency_segment = 1 THEN 'Promising'
+      WHEN Frequency_segment = 5 THEN 'Needs Attention'
+      WHEN Frequency_segment = 4 THEN 'About to Sleep'
+      WHEN Frequency_segment = 3 THEN 'At Risk'
+      WHEN Frequency_segment = 2 THEN 'Can’t lose'
+      WHEN Revenue_segment = 5 THEN 'Hibernating'
+      WHEN Revenue_segment = 4 THEN 'Lost'
+    END AS Segment
+  FROM
+    score
+)
+,RFM_score AS (
+  SELECT
+  Customer_id,
+  score.Recency_segment * 100 + score.Frequency_segment * 10 + score.Revenue_segment AS RFM_scores
+  FROM
+  score)
+,customer_profitability AS (
+  SELECT
+    Customer_ID,
+    Customer_Name,
+    AVG(Profit) AS profitability
+  FROM
+   `training.eustore`
+  GROUP BY
+    Customer_ID,
+    Customer_Name
+),
+profitability_groups AS (
+  SELECT
+    Customer_ID,
+    Customer_Name,
+    NTILE(5) OVER (ORDER BY profitability) AS profitability_group
+  FROM
+    customer_profitability
+)
+SELECT  cte1.Customer_Name, 
+        cte1.Customer_ID, 
+        cte2.Category, 
+        cte2.percent_spending_on_sales_category,
+        cte2.Sub_Category,
+        RFM_segment.segment,
+        RFM_score.RFM_scores,
+        score.Recency_segment,
+        score.Revenue_segment,
+        score.Frequency_segment,
+        CASE
+    WHEN profitability_group = 1 THEN 'Very Low'
+    WHEN profitability_group = 2 THEN 'Low'
+    WHEN profitability_group = 3 THEN 'Moderate'
+    WHEN profitability_group = 4 THEN 'High'
+    WHEN profitability_group = 5 THEN 'Very High'
+  END AS profitability_group,
+        cte3.shopper_type,
+        CTE6.last_year,
+        CTE6.growth_rate,
+        cte1.multiple_products_per_order_percentage,
+        cte1.Region,
+        cte1.Country,
+        cte1.State,
+        cte1.City, 
+        cte1.ship_mode, 
+        cte1.avg_shipping_hours, 
+        AVERAGE.median_days_between_orders,
+        cte4.Segment,
+        cte5.Total_Profit,
+        cte5.Average_Order_Value,
+        cte5.Average_Order_Profit,
+        cte5.Average_Products_Purchased_Per_Order,
+        cte5.Average_Revenue_Per_Product_For_The_Customer,
+        cte5.Average_Profit_Per_Product_For_The_Customer,
+        cte5.Total_Revenue,
+        cte5.Total_Transactions,
+        cte5.Date_Last_Transaction,
+        cte5.Days_Last_Transaction,
+        cte5.Date_First_Transaction,
+         
+FROM cte1
+JOIN cte2 ON cte1.Customer_Name = cte2.Customer_Name
+JOIN cte3 ON cte2.Customer_Name = cte3.Customer_Name
+JOIN AVERAGE ON cte3.Customer_Name = AVERAGE.Customer_Name
+JOIN cte4 ON AVERAGE.Customer_Name = cte4.Customer_Name
+JOIN cte5 ON cte4.Customer_Name = cte5.Customer_Name
+JOIN cte6 ON cte1.Customer_ID = cte6.Customer_ID
+JOIN RFM_segment ON cte1.Customer_ID = RFM_segment.Customer_ID
+JOIN score ON RFM_segment.customer_id = score.customer_id
+JOIN stat ON RFM_segment.customer_id = stat.customer_id
+JOIN RFM_score ON RFM_segment.customer_id = RFM_score.customer_id
+JOIN profitability_groups ON RFM_segment.customer_id = profitability_groups.customer_id
+
+GROUP BY cte1.Customer_ID, 
+        cte1.customer_name, 
+        cte1.Region,
+        cte1.Country,
+        cte1.State,
+        cte1.City, 
+        cte1.ship_mode, 
+        cte1.avg_shipping_hours, 
+        cte1.multiple_products_per_order_percentage,
+        cte2.Category, 
+        cte2.percent_spending_on_sales_category,
+        cte2.Sub_Category,
+        cte3.shopper_type,
+        AVERAGE.median_days_between_orders,
+        cte4.Segment, 
+        cte5.Total_Profit, 
+        cte5.Average_Order_Value,
+        cte5.Average_Order_Profit,
+        cte5.Average_Products_Purchased_Per_Order,
+        cte5.Average_Revenue_Per_Product_For_The_Customer,
+        cte5.Average_Profit_Per_Product_For_The_Customer,
+        cte5.Total_Revenue,
+        cte5.Total_Transactions,
+        cte5.Date_Last_Transaction,
+        cte5.Days_Last_Transaction,
+        cte5.Date_First_Transaction,
+        CTE6.last_year,
+        CTE6.growth_rate,
+        stat.customer_name,
+        RFM_segment.segment,
+        RFM_score.RFM_scores,
+        score.Recency_segment,
+        score.Revenue_segment,
+        score.Frequency_segment,
+        profitability_group
+        
