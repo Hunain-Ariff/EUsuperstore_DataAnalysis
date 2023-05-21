@@ -1,8 +1,19 @@
 # EUsuperstore_DataAnalysis
 # Project has two key components
 # 1) Customer Metrics working and Dashboard
+    CONTENTS:
+    Customer_metrics.ipynb
+    R code customer analysis EU superstore.R
+    SQL code Customer Analysis EU supertore.txt
 # 2) presentation and visualizations of key insights from Database Analysis  
-
+     CONTENTS:
+     DatabaseAnalysis.ipynb
+     Final submission database analysis.R
+     EU Superstore Database Analysis presentation.pptx
+     Database analysis visuals.pbix
+     Database Analysis visuals pdf.pdf
+     
+     
 ## Description
 TOOLS USED
 
