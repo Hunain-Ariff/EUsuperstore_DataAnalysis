@@ -1,5 +1,7 @@
 # EUsuperstore_DataAnalysis
-# Customer Analysis Dashboard and Key-Insights from Data set
+# Project has two key components
+# 1) Customer Metrics working and Dashboard
+# 2) presentation and visualizations of key insights from Database Analysis  
 
 ## Description
 TOOLS USED
