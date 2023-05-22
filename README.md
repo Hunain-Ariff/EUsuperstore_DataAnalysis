@@ -2,16 +2,18 @@
 # Project has two key components
 # 1) Customer Metrics working and Dashboard
     CONTENTS:
-    Customer_metrics.ipynb
-    R code customer analysis EU superstore.R
-    SQL code Customer Analysis EU supertore.txt
+    Customer_metrics.ipynb(Customer metrics code notebook)
+    R code customer analysis EU superstore.R(Customer metrics code R file)
+    SQL code Customer Analysis EU supertore.txt(Customer metrics code in SQL)
+    Customer dashboard.pbix(Customer metrics dashboard live)
+    Customer dashboard.pdf(Customer metrics dashboard static)
 # 2) presentation and visualizations of key insights from Database Analysis  
      CONTENTS:
-     DatabaseAnalysis.ipynb
-     Final submission database analysis.R
-     EU Superstore Database Analysis presentation.pptx
-     Database analysis visuals.pbix
-     Database Analysis visuals pdf.pdf
+     DatabaseAnalysis.ipynb(Databse Analysis code notebook)
+     Final submission database analysis.R(Databse Analysis code R file)
+     EU Superstore Database Analysis presentation.pptx(Database findings and analysis presentation)
+     Database analysis visuals.pbix(Live Visuals supporting Database findings and analysis presentation)
+     Database Analysis visuals pdf.pdf(Static Visuals supporting Database findings and analysis presentation)
      
      
 ## Description
