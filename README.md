@@ -21,13 +21,13 @@ TOOLS USED
 
 Coding : R and Sql
 
-Dashboard :     
+Dashboard : Power BI
 
 Presentation : Power Point
 
 Visualization and Reports : Power BI
 
-This project aims to analyze customer data and provide insights using a dashboard and a PowerPoint presentation along with reports from Power BI. The dashboard, created using [Data Studio](https://datastudio.google.com/) (or [Tableau](https://www.tableau.com/) if preferred) , offers a user-friendly interface with various metrics and filters. The PowerPoint presentation summarizes the findings and visualizes with power BI about the customers, highlighting important metrics, customer segments, and other relevant information.
+This project aims to analyze customer data and provide insights using a dashboard and a PowerPoint presentation along with reports from Power BI. The dashboard, created using Power BI , offers a user-friendly interface with various metrics and filters. The PowerPoint presentation summarizes the findings and visualizes with power BI about the customers, highlighting important metrics, customer segments, and other relevant information.
 
 ## Dashboard Features
 
